@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tris Online</title>
+    <title>Tris vs Computer</title>
     <style>
       :root {
         --bg: #fafafa;
@@ -71,8 +71,8 @@
     </style>
   </head>
   <body>
-    <h1>Tris (Tic-Tac-Toe)</h1>
-    <div id="status">Player X’s turn</div>
+    <h1>Tris (vs Computer)</h1>
+    <div id="status">Your turn (X)</div>
     <div id="board"></div>
     <button id="restart">Restart</button>
 
@@ -102,19 +102,56 @@
           const cell = document.createElement("div");
           cell.classList.add("cell");
           cell.textContent = val;
-          cell.addEventListener("click", () => makeMove(i));
+          cell.addEventListener("click", () => playerMove(i));
           boardEl.appendChild(cell);
         });
       }
 
-      function makeMove(i) {
-        if (board[i] !== "" || gameOver) return;
-        board[i] = current;
+      function playerMove(i) {
+        if (board[i] !== "" || gameOver || current !== "X") return;
+        board[i] = "X";
+        updateGame();
+        if (!gameOver) {
+          setTimeout(computerMove, 500); // computer responds after a short delay
+        }
+      }
+
+      function computerMove() {
+        if (gameOver) return;
+        const move = findBestMove();
+        if (move != null) board[move] = "O";
+        updateGame();
+      }
+
+      function findBestMove() {
+        // Try to win
+        for (let [a, b, c] of winCombos) {
+          const line = [board[a], board[b], board[c]];
+          if (line.filter((v) => v === "O").length === 2 && line.includes("")) {
+            return [a, b, c][line.indexOf("")];
+          }
+        }
+        // Try to block X from winning
+        for (let [a, b, c] of winCombos) {
+          const line = [board[a], board[b], board[c]];
+          if (line.filter((v) => v === "X").length === 2 && line.includes("")) {
+            return [a, b, c][line.indexOf("")];
+          }
+        }
+        // Otherwise pick random empty
+        const empty = board
+          .map((v, i) => (v === "" ? i : null))
+          .filter((v) => v !== null);
+        if (empty.length === 0) return null;
+        return empty[Math.floor(Math.random() * empty.length)];
+      }
+
+      function updateGame() {
         renderBoard();
         const winner = checkWinner();
         if (winner) {
-          statusEl.textContent = `Player ${winner} wins!`;
-          highlightWin(winner);
+          statusEl.textContent =
+            winner === "X" ? "You win! 🎉" : "Computer wins! 💻";
           gameOver = true;
           return;
         }
@@ -124,36 +161,27 @@
           return;
         }
         current = current === "X" ? "O" : "X";
-        statusEl.textContent = `Player ${current}’s turn`;
+        statusEl.textContent =
+          current === "X" ? "Your turn (X)" : "Computer’s turn (O)";
       }
 
       function checkWinner() {
+        const cells = document.querySelectorAll(".cell");
         for (let combo of winCombos) {
           const [a, b, c] = combo;
           if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-            document.querySelectorAll(".cell")[a].classList.add("win");
-            document.querySelectorAll(".cell")[b].classList.add("win");
-            document.querySelectorAll(".cell")[c].classList.add("win");
+            [a, b, c].forEach((i) => cells[i].classList.add("win"));
             return board[a];
           }
         }
         return null;
       }
 
-      function highlightWin() {
-        winCombos.forEach(([a, b, c]) => {
-          if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-            const cells = document.querySelectorAll(".cell");
-            [a, b, c].forEach((i) => cells[i].classList.add("win"));
-          }
-        });
-      }
-
       restartBtn.addEventListener("click", () => {
         board = Array(9).fill("");
         current = "X";
         gameOver = false;
-        statusEl.textContent = "Player X’s turn";
+        statusEl.textContent = "Your turn (X)";
         renderBoard();
       });
 
