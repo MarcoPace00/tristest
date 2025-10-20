@@ -72,7 +72,7 @@
   </head>
   <body>
     <h1>Tris (vs Computer)</h1>
-    <div id="status">Your turn (X)</div>
+    <div id="status"></div>
     <div id="board"></div>
     <button id="restart">Restart</button>
 
@@ -111,9 +111,7 @@
         if (board[i] !== "" || gameOver || current !== "X") return;
         board[i] = "X";
         updateGame();
-        if (!gameOver) {
-          setTimeout(computerMove, 500); // computer responds after a short delay
-        }
+        if (!gameOver) setTimeout(computerMove, 500);
       }
 
       function computerMove() {
@@ -131,14 +129,14 @@
             return [a, b, c][line.indexOf("")];
           }
         }
-        // Try to block X from winning
+        // Try to block X
         for (let [a, b, c] of winCombos) {
           const line = [board[a], board[b], board[c]];
           if (line.filter((v) => v === "X").length === 2 && line.includes("")) {
             return [a, b, c][line.indexOf("")];
           }
         }
-        // Otherwise pick random empty
+        // Pick random
         const empty = board
           .map((v, i) => (v === "" ? i : null))
           .filter((v) => v !== null);
@@ -163,12 +161,12 @@
         current = current === "X" ? "O" : "X";
         statusEl.textContent =
           current === "X" ? "Your turn (X)" : "Computer’s turn (O)";
+        if (current === "O") setTimeout(computerMove, 500);
       }
 
       function checkWinner() {
         const cells = document.querySelectorAll(".cell");
-        for (let combo of winCombos) {
-          const [a, b, c] = combo;
+        for (let [a, b, c] of winCombos) {
           if (board[a] && board[a] === board[b] && board[a] === board[c]) {
             [a, b, c].forEach((i) => cells[i].classList.add("win"));
             return board[a];
@@ -177,15 +175,19 @@
         return null;
       }
 
-      restartBtn.addEventListener("click", () => {
+      function startGame() {
         board = Array(9).fill("");
-        current = "X";
         gameOver = false;
-        statusEl.textContent = "Your turn (X)";
+        current = Math.random() < 0.5 ? "X" : "O"; // random first turn
         renderBoard();
-      });
+        statusEl.textContent =
+          current === "X" ? "You start! (X)" : "Computer starts (O)";
+        if (current === "O") setTimeout(computerMove, 500);
+      }
 
-      renderBoard();
+      restartBtn.addEventListener("click", startGame);
+
+      startGame(); // start immediately when page loads
     </script>
   </body>
 </html>
