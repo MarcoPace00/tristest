@@ -1,390 +1,128 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Tris Online (Firebase v9) - Fixed New Game</title>
-    <style>
-      body {
-        font-family: system-ui, Segoe UI, Roboto, sans-serif;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        min-height: 100vh;
-        background: #fafafa;
-        margin: 0;
-        padding: 1rem;
-      }
-      #board {
-        display: grid;
-        grid-template-columns: repeat(3, 100px);
-        grid-template-rows: repeat(3, 100px);
-        gap: 10px;
-        margin: 1rem;
-      }
-      .cell {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: 2px solid #0078ff;
-        font-size: 2.5rem;
-        width: 100px;
-        height: 100px;
-        cursor: pointer;
-        background: white;
-        user-select: none;
-      }
-      .cell.win {
-        background: #2ecc71;
-        color: #fff;
-      }
-      #controls {
-        display: flex;
-        gap: 0.5rem;
-        align-items: center;
-      }
-      button {
-        background: #0078ff;
-        color: #fff;
-        border: none;
-        padding: 0.5rem 1rem;
-        border-radius: 8px;
-        cursor: pointer;
-      }
-      #status {
-        margin-top: 0.5rem;
-        font-weight: 600;
-      }
-      a.share {
-        color: #0078ff;
-        text-decoration: none;
-        font-size: 0.9rem;
-      }
-    </style>
-  </head>
-  <body>
-    <h1>Tris Online</h1>
-    <div id="status">Loading...</div>
-    <div id="board"></div>
-    <div id="controls">
-      <button id="newGame">New Game</button>
-      <button id="leaveGame">Leave Game</button>
-      <a
-        id="shareLink"
-        class="share"
-        href="#"
-        target="_blank"
-        rel="noopener noreferrer"
-      ></a>
-    </div>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Tris Online</title>
+<style>
+  body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#fafafa;margin:0}
+  #board{display:grid;grid-template-columns:repeat(3,100px);grid-template-rows:repeat(3,100px);gap:10px;margin:1rem}
+  .cell{display:flex;align-items:center;justify-content:center;font-size:2.5rem;border:2px solid #0078ff;background:white;cursor:pointer;user-select:none}
+  .cell.win{background:#2ecc71;color:white}
+  button{margin:.5rem;padding:.5rem 1rem;border:none;border-radius:6px;background:#0078ff;color:#fff;cursor:pointer}
+  #status{margin-top:.5rem;font-weight:bold}
+  #link{color:#0078ff;font-size:.9rem;margin-top:.25rem;word-break:break-all;text-align:center}
+</style>
+</head>
+<body>
+<h1>Tris Online</h1>
+<div id="status">Loading...</div>
+<div id="board"></div>
+<button id="new">New Game</button>
+<div id="link"></div>
 
-    <script type="module">
-      // ---- Firebase imports (modular) ----
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-      import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-analytics.js";
-      import {
-        getDatabase,
-        ref,
-        get,
-        set,
-        update,
-        onValue,
-      } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+import { getDatabase, ref, get, set, update, onValue, off } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
 
-      // ---- Your Firebase config (provided) ----
-      const firebaseConfig = {
-        apiKey: "AIzaSyCRkMvnNsh_c9AGP4YYudqND1hMysbW1JQ",
-        authDomain: "tris-online-9236a.firebaseapp.com",
-        databaseURL: "https://tris-online-9236a-default-rtdb.firebaseio.com",
-        projectId: "tris-online-9236a",
-        storageBucket: "tris-online-9236a.firebasestorage.app",
-        messagingSenderId: "907067795087",
-        appId: "1:907067795087:web:f244f2b32f391bc56eb2fa",
-        measurementId: "G-3XFX5G2V0C",
-      };
+const firebaseConfig = {
+  apiKey: "AIzaSyCRkMvnNsh_c9AGP4YYudqND1hMysbW1JQ",
+  authDomain: "tris-online-9236a.firebaseapp.com",
+  databaseURL: "https://tris-online-9236a-default-rtdb.firebaseio.com",
+  projectId: "tris-online-9236a",
+  storageBucket: "tris-online-9236a.firebasestorage.app",
+  messagingSenderId: "907067795087",
+  appId: "1:907067795087:web:f244f2b32f391bc56eb2fa"
+};
 
-      // ---- Init Firebase ----
-      const app = initializeApp(firebaseConfig);
-      try {
-        getAnalytics(app);
-      } catch (e) {
-        /* analytics may throw in some local contexts — ignore */
-      }
-      const db = getDatabase(app);
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-      // ---- DOM refs ----
-      const boardEl = document.getElementById("board");
-      const statusEl = document.getElementById("status");
-      const newBtn = document.getElementById("newGame");
-      const leaveBtn = document.getElementById("leaveGame");
-      const shareLink = document.getElementById("shareLink");
+const boardEl=document.getElementById("board");
+const statusEl=document.getElementById("status");
+const newBtn=document.getElementById("new");
+const linkEl=document.getElementById("link");
 
-      // ---- Local game state ----
-      let gameId = null; // current game id
-      let uid = Math.random().toString(36).slice(2, 9); // simple anonymous id
-      let symbol = "X"; // local player's symbol for current game
-      let board = Array(9).fill("");
-      let current = "X";
-      let gameOver = false;
+let uid=Math.random().toString(36).slice(2,9);
+let board=Array(9).fill("");
+let current="X";
+let symbol="X";
+let gameId=null;
+let gameRef=null;
+let gameOver=false;
+let stopListen=null;
 
-      // Listener control
-      let dbRef = null;
-      let unsubscribe = null; // holds the onValue unsubscribe function
+const combos=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
 
-      const winCombos = [
-        [0, 1, 2],
-        [3, 4, 5],
-        [6, 7, 8],
-        [0, 3, 6],
-        [1, 4, 7],
-        [2, 5, 8],
-        [0, 4, 8],
-        [2, 4, 6],
-      ];
+function render(){
+  boardEl.innerHTML="";
+  board.forEach((val,i)=>{
+    const d=document.createElement("div");
+    d.className="cell";
+    d.textContent=val;
+    d.onclick=()=>move(i);
+    boardEl.appendChild(d);
+  });
+}
 
-      // ---- UI helpers ----
-      function clearWinClasses() {
-        document
-          .querySelectorAll(".cell.win")
-          .forEach((n) => n.classList.remove("win"));
-      }
+function winCheck(){
+  const cells=document.querySelectorAll(".cell");
+  for(let [a,b,c] of combos){
+    if(board[a] && board[a]===board[b] && board[a]===board[c]){
+      [a,b,c].forEach(i=>cells[i].classList.add("win"));
+      gameOver=true;
+      return board[a];
+    }
+  }
+  return null;
+}
 
-      function renderBoard() {
-        boardEl.innerHTML = "";
-        for (let i = 0; i < 9; i++) {
-          const c = document.createElement("div");
-          c.className = "cell";
-          c.textContent = board[i] || "";
-          c.onclick = () => makeMove(i);
-          boardEl.appendChild(c);
-        }
-      }
+async function move(i){
+  if(gameOver || board[i] || current!==symbol)return;
+  board[i]=symbol;
+  const winner=winCheck();
+  if(winner){
+    await update(gameRef,{board,status:`${winner} wins`});
+    return;
+  }
+  if(board.every(c=>c)){
+    await update(gameRef,{board,status:"Draw"});
+    return;
+  }
+  current=current==="X"?"O":"X";
+  await update(gameRef,{board,current,status:"playing"});
+}
 
-      // ---- attach/detach listener helpers ----
-      function attachListener(id) {
-        // detach old listener if present
-        if (typeof unsubscribe === "function") {
-          try {
-            unsubscribe();
-          } catch (e) {
-            /* ignore */
-          }
-          unsubscribe = null;
-        }
-        dbRef = ref(db, `games/${id}`);
-        unsubscribe = onValue(dbRef, (snap) => {
-          handleGameUpdate(snap);
-        });
-      }
+function listen(){
+  if(stopListen) off(gameRef);
+  onValue(gameRef,snap=>{
+    const data=snap.val(); if(!data)return;
+    board=data.board; current=data.current;
+    render();
+    const w=winCheck();
+    if(data.status==="waiting") statusEl.textContent="Waiting for opponent...";
+    else if(data.status==="playing") statusEl.textContent=current===symbol?"Your turn":"Opponent's turn";
+    else statusEl.textContent=data.status;
+  });
+}
 
-      function detachListener() {
-        if (typeof unsubscribe === "function") {
-          try {
-            unsubscribe();
-          } catch (e) {
-            /* ignore */
-          }
-          unsubscribe = null;
-        }
-        dbRef = null;
-      }
+async function createGame(){
+  if(stopListen) off(gameRef);
+  board=Array(9).fill("");
+  current="X"; symbol="X"; gameOver=false;
+  gameId=Math.random().toString(36).slice(2,7);
+  gameRef=ref(db,"games/"+gameId);
+  await set(gameRef,{board,current,status:"waiting",players:{X:uid}});
+  location.hash=gameId;
+  linkEl.textContent="Share this link with your friend: "+location.href;
+  listen();
+}
 
-      // ---- Create or join a game when page opens ----
-      async function createOrJoinGame() {
-        const hash = location.hash.replace("#", "");
-        if (hash) {
-          // joining an existing game id
-          gameId = hash;
-          const snap = await get(ref(db, `games/${gameId}`));
-          if (!snap.exists()) {
-            alert("Game not found, creating a new one instead.");
-            return createNewGameAndAttach();
-          }
-          const data = snap.val();
-          // choose symbol: if X already present, join as O; otherwise take X
-          symbol = data.players && data.players.X ? "O" : "X";
-          // write our uid into player slot
-          await set(ref(db, `games/${gameId}/players/${symbol}`), uid);
-          attachListener(gameId);
-          shareLink.href = location.href;
-          shareLink.textContent = "Share link";
-        } else {
-          // no hash -> create new game
-          return createNewGameAndAttach();
-        }
-      }
-
-      // ---- create new game and attach listener ----
-      async function createNewGameAndAttach() {
-        // clean up old listener if any
-        if (gameId) detachListener();
-
-        // new ID and local state reset
-        const newId = Math.random().toString(36).slice(2, 7);
-        gameId = newId;
-        location.hash = gameId;
-
-        board = Array(9).fill("");
-        current = "X";
-        symbol = "X";
-        gameOver = false;
-        clearWinClasses();
-        renderBoard();
-
-        // create node in firebase
-        await set(ref(db, `games/${gameId}`), {
-          board: Array(9).fill(""),
-          current: "X",
-          players: { X: uid },
-          status: "waiting",
-        });
-
-        attachListener(gameId);
-        statusEl.textContent = "Created game. Share link to invite opponent.";
-        shareLink.href = location.href;
-        shareLink.textContent = "Share link";
-      }
-
-      // ---- handle game updates from Firebase ----
-      function handleGameUpdate(snap) {
-        const data = snap.val();
-        if (!data) return;
-        // If data came from a different game node (safety) set local gameId properly
-        // (gameId should already be set by create/join, but ensure it's in sync)
-        // (note: snap.ref.key would be game id; but we already manage gameId)
-        // update local state
-        board = data.board || Array(9).fill("");
-        current = data.current || "X";
-        // clear old win classes then render and highlight again from check
-        clearWinClasses();
-        renderBoard();
-        const winner = checkWinnerLocal(); // marks wins visually and sets gameOver
-        if (winner) {
-          statusEl.textContent = winner === "X" ? "X wins!" : "O wins!";
-          return;
-        }
-        if (board.every((c) => c !== "")) {
-          statusEl.textContent = "It's a draw!";
-          gameOver = true;
-          return;
-        }
-        // update status text
-        if (data.status === "waiting") {
-          statusEl.textContent = "Waiting for opponent...";
-        } else if (data.status === "playing") {
-          statusEl.textContent =
-            current === symbol ? "Your turn" : "Opponent's turn";
-        } else if (data.status === "finished") {
-          statusEl.textContent = data.message || "Finished";
-        } else {
-          statusEl.textContent =
-            current === symbol ? "Your turn" : "Opponent's turn";
-        }
-      }
-
-      // ---- Making a move ----
-      async function makeMove(i) {
-        // local guards
-        if (!gameId) {
-          alert("No game ID. Click New Game to start.");
-          return;
-        }
-        if (gameOver) return;
-        if (board[i] !== "") return;
-        if (current !== symbol) return; // not our turn
-
-        // local optimistic update
-        board[i] = symbol;
-        clearWinClasses();
-        renderBoard();
-
-        // check for a win locally
-        const winner = checkWinnerLocal();
-        if (winner) {
-          // write final state
-          await update(ref(db, `games/${gameId}`), {
-            board,
-            status: "finished",
-            message: `${winner} wins!`,
-          });
-          gameOver = true;
-          return;
-        }
-
-        // check for draw
-        if (board.every((c) => c !== "")) {
-          await update(ref(db, `games/${gameId}`), {
-            board,
-            status: "finished",
-            message: "Draw!",
-          });
-          gameOver = true;
-          return;
-        }
-
-        // otherwise flip turn and commit to database
-        current = current === "X" ? "O" : "X";
-        await update(ref(db, `games/${gameId}`), {
-          board,
-          current,
-          status: "playing",
-        });
-      }
-
-      // ---- Winner detection (adds win class to cells) ----
-      function checkWinnerLocal() {
-        const combos = winCombos;
-        const cells = document.querySelectorAll(".cell");
-        for (const [a, b, c] of combos) {
-          if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-            [a, b, c].forEach((i) => {
-              const el = cells[i];
-              if (el) el.classList.add("win");
-            });
-            gameOver = true;
-            return board[a];
-          }
-        }
-        return null;
-      }
-
-      // ---- Leave game (clear hash and detach) ----
-      function leaveGame() {
-        // remove our player entry if possible (best-effort)
-        if (gameId && symbol) {
-          try {
-            set(ref(db, `games/${gameId}/players/${symbol}`), null).catch(
-              () => {}
-            );
-          } catch (e) {}
-        }
-        // clear url hash and local state and detach listener
-        location.hash = "";
-        detachListener();
-        gameId = null;
-        board = Array(9).fill("");
-        current = "X";
-        symbol = "X";
-        gameOver = false;
-        clearWinClasses();
-        renderBoard();
-        statusEl.textContent = "Left game. Click New Game to start.";
-        shareLink.href = "#";
-        shareLink.textContent = "";
-      }
-
-      // ---- Button handlers ----
-      newBtn.addEventListener("click", async (e) => {
-        // If we are currently in a game and want to create a new one, create new node and attach
-        await createNewGameAndAttach();
-      });
-
-      leaveBtn.addEventListener("click", leaveGame);
-
-      // ---- initial render + try to create/join based on hash ----
-      renderBoard();
-      createOrJoinGame();
-    </script>
-  </body>
-</html>
+async function joinGame(id){
+  gameId=id;
+  gameRef=ref(db,"games/"+id);
+  const snap=await get(gameRef);
+  if(!snap.exists()){statusEl.textContent="Game not found.";return;}
+  const data=snap.val();
+  symbol=data.players && data.players.X?"O":"X";
+  await update
