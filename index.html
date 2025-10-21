@@ -3,189 +3,221 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tris vs Computer</title>
+    <title>Tris Online (Firebase v9)</title>
     <style>
-      :root {
-        --bg: #fafafa;
-        --fg: #333;
-        --accent: #0078ff;
-        --win: #2ecc71;
-      }
       body {
         font-family: system-ui, sans-serif;
-        background: var(--bg);
-        color: var(--fg);
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        min-height: 100vh;
-        margin: 0;
-      }
-      h1 {
-        margin-bottom: 0.5em;
+        height: 100vh;
+        background: #fafafa;
       }
       #board {
         display: grid;
         grid-template-columns: repeat(3, 100px);
         grid-template-rows: repeat(3, 100px);
         gap: 10px;
-        margin-bottom: 1em;
+        margin: 1em;
       }
       .cell {
         display: flex;
         align-items: center;
         justify-content: center;
-        background: white;
-        border: 2px solid var(--accent);
+        border: 2px solid #0078ff;
         font-size: 2.5rem;
-        font-weight: bold;
+        width: 100px;
+        height: 100px;
         cursor: pointer;
-        transition: background 0.2s, transform 0.1s;
-      }
-      .cell:hover {
-        background: #eef6ff;
-        transform: scale(1.05);
+        background: white;
       }
       .cell.win {
-        background: var(--win);
+        background: #2ecc71;
         color: white;
-      }
-      #status {
-        font-size: 1.2rem;
-        margin-bottom: 1em;
       }
       button {
-        background: var(--accent);
-        border: none;
+        background: #0078ff;
         color: white;
-        font-size: 1rem;
+        border: none;
         padding: 0.5em 1em;
         border-radius: 8px;
         cursor: pointer;
-        transition: background 0.2s;
-      }
-      button:hover {
-        background: #005fd1;
       }
     </style>
   </head>
   <body>
-    <h1>Tris (vs Computer)</h1>
-    <div id="status">Your turn (X)</div>
+    <h1>Tris Online</h1>
+    <div id="status"></div>
     <div id="board"></div>
-    <button id="restart">Restart</button>
+    <button id="newGame">New Game</button>
 
-    <script>
+    <!-- Import Firebase modular SDKs -->
+    <script type="module">
+      // Import Firebase SDKs from the official CDN
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+      import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-analytics.js";
+      import {
+        getDatabase,
+        ref,
+        get,
+        set,
+        update,
+        onValue,
+      } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+
+      // Your web app's Firebase configuration (you provided this)
+      const firebaseConfig = {
+        apiKey: "AIzaSyCRkMvnNsh_c9AGP4YYudqND1hMysbW1JQ",
+        authDomain: "tris-online-9236a.firebaseapp.com",
+        databaseURL: "https://tris-online-9236a-default-rtdb.firebaseio.com",
+        projectId: "tris-online-9236a",
+        storageBucket: "tris-online-9236a.firebasestorage.app",
+        messagingSenderId: "907067795087",
+        appId: "1:907067795087:web:f244f2b32f391bc56eb2fa",
+        measurementId: "G-3XFX5G2V0C",
+      };
+
+      // Initialize Firebase
+      const app = initializeApp(firebaseConfig);
+      const analytics = getAnalytics(app);
+      const db = getDatabase(app);
+
+      // DOM references
       const boardEl = document.getElementById("board");
       const statusEl = document.getElementById("status");
-      const restartBtn = document.getElementById("restart");
+      const newBtn = document.getElementById("newGame");
 
+      // Game state
+      let gameId = null;
+      let uid = Math.random().toString(36).slice(2, 9);
+      let symbol = "X";
       let board = Array(9).fill("");
       let current = "X";
       let gameOver = false;
 
-      const winCombos = [
-        [0, 1, 2],
-        [3, 4, 5],
-        [6, 7, 8],
-        [0, 3, 6],
-        [1, 4, 7],
-        [2, 5, 8],
-        [0, 4, 8],
-        [2, 4, 6],
-      ];
-
+      // --- UI rendering ---
       function renderBoard() {
         boardEl.innerHTML = "";
-        board.forEach((val, i) => {
-          const cell = document.createElement("div");
-          cell.classList.add("cell");
-          cell.textContent = val;
-          cell.addEventListener("click", () => playerMove(i));
-          boardEl.appendChild(cell);
+        board.forEach((v, i) => {
+          const c = document.createElement("div");
+          c.className = "cell";
+          c.textContent = v;
+          c.onclick = () => makeMove(i);
+          boardEl.appendChild(c);
         });
       }
 
-      function playerMove(i) {
-        if (board[i] !== "" || gameOver || current !== "X") return;
-        board[i] = "X";
-        updateGame();
-        if (!gameOver) {
-          setTimeout(computerMove, 500); // computer responds after a short delay
-        }
-      }
-
-      function computerMove() {
-        if (gameOver) return;
-        const move = findBestMove();
-        if (move != null) board[move] = "O";
-        updateGame();
-      }
-
-      function findBestMove() {
-        // Try to win
-        for (let [a, b, c] of winCombos) {
-          const line = [board[a], board[b], board[c]];
-          if (line.filter((v) => v === "O").length === 2 && line.includes("")) {
-            return [a, b, c][line.indexOf("")];
+      // --- Game setup ---
+      async function createOrJoinGame() {
+        const hash = location.hash.replace("#", "");
+        if (hash) {
+          // join existing
+          gameId = hash;
+          const snap = await get(ref(db, "games/" + gameId));
+          if (snap.exists()) {
+            const data = snap.val();
+            board = data.board;
+            current = data.current;
+            symbol = data.players.X ? "O" : "X";
+            await set(ref(db, "games/" + gameId + "/players/" + symbol), uid);
+            statusEl.textContent = "Joined game as " + symbol;
+          } else {
+            alert("Game not found!");
+            return;
           }
-        }
-        // Try to block X from winning
-        for (let [a, b, c] of winCombos) {
-          const line = [board[a], board[b], board[c]];
-          if (line.filter((v) => v === "X").length === 2 && line.includes("")) {
-            return [a, b, c][line.indexOf("")];
-          }
-        }
-        // Otherwise pick random empty
-        const empty = board
-          .map((v, i) => (v === "" ? i : null))
-          .filter((v) => v !== null);
-        if (empty.length === 0) return null;
-        return empty[Math.floor(Math.random() * empty.length)];
-      }
-
-      function updateGame() {
-        renderBoard();
-        const winner = checkWinner();
-        if (winner) {
+        } else {
+          // create new
+          gameId = Math.random().toString(36).slice(2, 7);
+          location.hash = gameId;
+          await set(ref(db, "games/" + gameId), {
+            board: Array(9).fill(""),
+            current: "X",
+            players: { X: uid },
+            status: "waiting",
+          });
+          symbol = "X";
           statusEl.textContent =
-            winner === "X" ? "You win! 🎉" : "Computer wins! 💻";
+            "Created game. Share this link: " + location.href;
+        }
+
+        // Listen for changes
+        onValue(ref(db, "games/" + gameId), (snap) => {
+          const data = snap.val();
+          if (!data) return;
+          board = data.board;
+          current = data.current;
+          renderBoard();
+          checkWinnerLocal();
+          if (data.status === "waiting" && data.players.O) {
+            update(ref(db, "games/" + gameId), { status: "playing" });
+            statusEl.textContent = "Game started!";
+          } else if (data.status === "playing") {
+            statusEl.textContent =
+              current === symbol ? "Your turn" : "Opponent’s turn";
+          } else if (data.status === "finished") {
+            statusEl.textContent = data.message;
+          }
+        });
+      }
+
+      // --- Make a move ---
+      function makeMove(i) {
+        if (gameOver || board[i] != "" || current !== symbol) return;
+        board[i] = symbol;
+        const winner = checkWinnerLocal();
+        if (winner) {
+          update(ref(db, "games/" + gameId), {
+            board,
+            status: "finished",
+            message: `${winner} wins!`,
+          });
           gameOver = true;
           return;
         }
-        if (board.every((cell) => cell !== "")) {
-          statusEl.textContent = "It's a draw!";
+        if (board.every((c) => c != "")) {
+          update(ref(db, "games/" + gameId), {
+            board,
+            status: "finished",
+            message: "Draw!",
+          });
           gameOver = true;
           return;
         }
         current = current === "X" ? "O" : "X";
-        statusEl.textContent =
-          current === "X" ? "Your turn (X)" : "Computer’s turn (O)";
+        update(ref(db, "games/" + gameId), { board, current });
       }
 
-      function checkWinner() {
+      // --- Check winner ---
+      function checkWinnerLocal() {
+        const combos = [
+          [0, 1, 2],
+          [3, 4, 5],
+          [6, 7, 8],
+          [0, 3, 6],
+          [1, 4, 7],
+          [2, 5, 8],
+          [0, 4, 8],
+          [2, 4, 6],
+        ];
         const cells = document.querySelectorAll(".cell");
-        for (let combo of winCombos) {
-          const [a, b, c] = combo;
+        for (let [a, b, c] of combos) {
           if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-            [a, b, c].forEach((i) => cells[i].classList.add("win"));
+            [a, b, c].forEach((i) => cells[i]?.classList.add("win"));
+            gameOver = true;
             return board[a];
           }
         }
         return null;
       }
 
-      restartBtn.addEventListener("click", () => {
-        board = Array(9).fill("");
-        current = "X";
-        gameOver = false;
-        statusEl.textContent = "Your turn (X)";
-        renderBoard();
-      });
+      newBtn.onclick = () => {
+        location.href = location.origin + location.pathname;
+        location.reload();
+      };
 
       renderBoard();
+      createOrJoinGame();
     </script>
   </body>
 </html>
