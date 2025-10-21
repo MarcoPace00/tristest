@@ -1,25 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tris Online (Firebase v9)</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tris Online (Firebase v9) - Fixed New Game</title>
     <style>
       body {
-        font-family: system-ui, sans-serif;
+        font-family: system-ui, Segoe UI, Roboto, sans-serif;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        height: 100vh;
+        min-height: 100vh;
         background: #fafafa;
+        margin: 0;
+        padding: 1rem;
       }
       #board {
         display: grid;
         grid-template-columns: repeat(3, 100px);
         grid-template-rows: repeat(3, 100px);
         gap: 10px;
-        margin: 1em;
+        margin: 1rem;
       }
       .cell {
         display: flex;
@@ -31,30 +33,54 @@
         height: 100px;
         cursor: pointer;
         background: white;
+        user-select: none;
       }
       .cell.win {
         background: #2ecc71;
-        color: white;
+        color: #fff;
+      }
+      #controls {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
       }
       button {
         background: #0078ff;
-        color: white;
+        color: #fff;
         border: none;
-        padding: 0.5em 1em;
+        padding: 0.5rem 1rem;
         border-radius: 8px;
         cursor: pointer;
+      }
+      #status {
+        margin-top: 0.5rem;
+        font-weight: 600;
+      }
+      a.share {
+        color: #0078ff;
+        text-decoration: none;
+        font-size: 0.9rem;
       }
     </style>
   </head>
   <body>
     <h1>Tris Online</h1>
-    <div id="status"></div>
+    <div id="status">Loading...</div>
     <div id="board"></div>
-    <button id="newGame">New Game</button>
+    <div id="controls">
+      <button id="newGame">New Game</button>
+      <button id="leaveGame">Leave Game</button>
+      <a
+        id="shareLink"
+        class="share"
+        href="#"
+        target="_blank"
+        rel="noopener noreferrer"
+      ></a>
+    </div>
 
-    <!-- Import Firebase modular SDKs -->
     <script type="module">
-      // Import Firebase SDKs from the official CDN
+      // ---- Firebase imports (modular) ----
       import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
       import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-analytics.js";
       import {
@@ -66,7 +92,7 @@
         onValue,
       } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
 
-      // Your web app's Firebase configuration (you provided this)
+      // ---- Your Firebase config (provided) ----
       const firebaseConfig = {
         apiKey: "AIzaSyCRkMvnNsh_c9AGP4YYudqND1hMysbW1JQ",
         authDomain: "tris-online-9236a.firebaseapp.com",
@@ -78,96 +104,206 @@
         measurementId: "G-3XFX5G2V0C",
       };
 
-      // Initialize Firebase
+      // ---- Init Firebase ----
       const app = initializeApp(firebaseConfig);
-      const analytics = getAnalytics(app);
+      try {
+        getAnalytics(app);
+      } catch (e) {
+        /* analytics may throw in some local contexts — ignore */
+      }
       const db = getDatabase(app);
 
-      // DOM references
+      // ---- DOM refs ----
       const boardEl = document.getElementById("board");
       const statusEl = document.getElementById("status");
       const newBtn = document.getElementById("newGame");
+      const leaveBtn = document.getElementById("leaveGame");
+      const shareLink = document.getElementById("shareLink");
 
-      // Game state
-      let gameId = null;
-      let uid = Math.random().toString(36).slice(2, 9);
-      let symbol = "X";
+      // ---- Local game state ----
+      let gameId = null; // current game id
+      let uid = Math.random().toString(36).slice(2, 9); // simple anonymous id
+      let symbol = "X"; // local player's symbol for current game
       let board = Array(9).fill("");
       let current = "X";
       let gameOver = false;
 
-      // --- UI rendering ---
+      // Listener control
+      let dbRef = null;
+      let unsubscribe = null; // holds the onValue unsubscribe function
+
+      const winCombos = [
+        [0, 1, 2],
+        [3, 4, 5],
+        [6, 7, 8],
+        [0, 3, 6],
+        [1, 4, 7],
+        [2, 5, 8],
+        [0, 4, 8],
+        [2, 4, 6],
+      ];
+
+      // ---- UI helpers ----
+      function clearWinClasses() {
+        document
+          .querySelectorAll(".cell.win")
+          .forEach((n) => n.classList.remove("win"));
+      }
+
       function renderBoard() {
         boardEl.innerHTML = "";
-        board.forEach((v, i) => {
+        for (let i = 0; i < 9; i++) {
           const c = document.createElement("div");
           c.className = "cell";
-          c.textContent = v;
+          c.textContent = board[i] || "";
           c.onclick = () => makeMove(i);
           boardEl.appendChild(c);
+        }
+      }
+
+      // ---- attach/detach listener helpers ----
+      function attachListener(id) {
+        // detach old listener if present
+        if (typeof unsubscribe === "function") {
+          try {
+            unsubscribe();
+          } catch (e) {
+            /* ignore */
+          }
+          unsubscribe = null;
+        }
+        dbRef = ref(db, `games/${id}`);
+        unsubscribe = onValue(dbRef, (snap) => {
+          handleGameUpdate(snap);
         });
       }
 
-      // --- Game setup ---
+      function detachListener() {
+        if (typeof unsubscribe === "function") {
+          try {
+            unsubscribe();
+          } catch (e) {
+            /* ignore */
+          }
+          unsubscribe = null;
+        }
+        dbRef = null;
+      }
+
+      // ---- Create or join a game when page opens ----
       async function createOrJoinGame() {
         const hash = location.hash.replace("#", "");
         if (hash) {
-          // join existing
+          // joining an existing game id
           gameId = hash;
-          const snap = await get(ref(db, "games/" + gameId));
-          if (snap.exists()) {
-            const data = snap.val();
-            board = data.board;
-            current = data.current;
-            symbol = data.players.X ? "O" : "X";
-            await set(ref(db, "games/" + gameId + "/players/" + symbol), uid);
-            statusEl.textContent = "Joined game as " + symbol;
-          } else {
-            alert("Game not found!");
-            return;
+          const snap = await get(ref(db, `games/${gameId}`));
+          if (!snap.exists()) {
+            alert("Game not found, creating a new one instead.");
+            return createNewGameAndAttach();
           }
-        } else {
-          // create new
-          gameId = Math.random().toString(36).slice(2, 7);
-          location.hash = gameId;
-          await set(ref(db, "games/" + gameId), {
-            board: Array(9).fill(""),
-            current: "X",
-            players: { X: uid },
-            status: "waiting",
-          });
-          symbol = "X";
-          statusEl.textContent =
-            "Created game. Share this link: " + location.href;
-        }
-
-        // Listen for changes
-        onValue(ref(db, "games/" + gameId), (snap) => {
           const data = snap.val();
-          if (!data) return;
-          board = data.board;
-          current = data.current;
-          renderBoard();
-          checkWinnerLocal();
-          if (data.status === "waiting" && data.players.O) {
-            update(ref(db, "games/" + gameId), { status: "playing" });
-            statusEl.textContent = "Game started!";
-          } else if (data.status === "playing") {
-            statusEl.textContent =
-              current === symbol ? "Your turn" : "Opponent’s turn";
-          } else if (data.status === "finished") {
-            statusEl.textContent = data.message;
-          }
-        });
+          // choose symbol: if X already present, join as O; otherwise take X
+          symbol = data.players && data.players.X ? "O" : "X";
+          // write our uid into player slot
+          await set(ref(db, `games/${gameId}/players/${symbol}`), uid);
+          attachListener(gameId);
+          shareLink.href = location.href;
+          shareLink.textContent = "Share link";
+        } else {
+          // no hash -> create new game
+          return createNewGameAndAttach();
+        }
       }
 
-      // --- Make a move ---
-      function makeMove(i) {
-        if (gameOver || board[i] != "" || current !== symbol) return;
+      // ---- create new game and attach listener ----
+      async function createNewGameAndAttach() {
+        // clean up old listener if any
+        if (gameId) detachListener();
+
+        // new ID and local state reset
+        const newId = Math.random().toString(36).slice(2, 7);
+        gameId = newId;
+        location.hash = gameId;
+
+        board = Array(9).fill("");
+        current = "X";
+        symbol = "X";
+        gameOver = false;
+        clearWinClasses();
+        renderBoard();
+
+        // create node in firebase
+        await set(ref(db, `games/${gameId}`), {
+          board: Array(9).fill(""),
+          current: "X",
+          players: { X: uid },
+          status: "waiting",
+        });
+
+        attachListener(gameId);
+        statusEl.textContent = "Created game. Share link to invite opponent.";
+        shareLink.href = location.href;
+        shareLink.textContent = "Share link";
+      }
+
+      // ---- handle game updates from Firebase ----
+      function handleGameUpdate(snap) {
+        const data = snap.val();
+        if (!data) return;
+        // If data came from a different game node (safety) set local gameId properly
+        // (gameId should already be set by create/join, but ensure it's in sync)
+        // (note: snap.ref.key would be game id; but we already manage gameId)
+        // update local state
+        board = data.board || Array(9).fill("");
+        current = data.current || "X";
+        // clear old win classes then render and highlight again from check
+        clearWinClasses();
+        renderBoard();
+        const winner = checkWinnerLocal(); // marks wins visually and sets gameOver
+        if (winner) {
+          statusEl.textContent = winner === "X" ? "X wins!" : "O wins!";
+          return;
+        }
+        if (board.every((c) => c !== "")) {
+          statusEl.textContent = "It's a draw!";
+          gameOver = true;
+          return;
+        }
+        // update status text
+        if (data.status === "waiting") {
+          statusEl.textContent = "Waiting for opponent...";
+        } else if (data.status === "playing") {
+          statusEl.textContent =
+            current === symbol ? "Your turn" : "Opponent's turn";
+        } else if (data.status === "finished") {
+          statusEl.textContent = data.message || "Finished";
+        } else {
+          statusEl.textContent =
+            current === symbol ? "Your turn" : "Opponent's turn";
+        }
+      }
+
+      // ---- Making a move ----
+      async function makeMove(i) {
+        // local guards
+        if (!gameId) {
+          alert("No game ID. Click New Game to start.");
+          return;
+        }
+        if (gameOver) return;
+        if (board[i] !== "") return;
+        if (current !== symbol) return; // not our turn
+
+        // local optimistic update
         board[i] = symbol;
+        clearWinClasses();
+        renderBoard();
+
+        // check for a win locally
         const winner = checkWinnerLocal();
         if (winner) {
-          update(ref(db, "games/" + gameId), {
+          // write final state
+          await update(ref(db, `games/${gameId}`), {
             board,
             status: "finished",
             message: `${winner} wins!`,
@@ -175,8 +311,10 @@
           gameOver = true;
           return;
         }
-        if (board.every((c) => c != "")) {
-          update(ref(db, "games/" + gameId), {
+
+        // check for draw
+        if (board.every((c) => c !== "")) {
+          await update(ref(db, `games/${gameId}`), {
             board,
             status: "finished",
             message: "Draw!",
@@ -184,26 +322,26 @@
           gameOver = true;
           return;
         }
+
+        // otherwise flip turn and commit to database
         current = current === "X" ? "O" : "X";
-        update(ref(db, "games/" + gameId), { board, current });
+        await update(ref(db, `games/${gameId}`), {
+          board,
+          current,
+          status: "playing",
+        });
       }
 
-      // --- Check winner ---
+      // ---- Winner detection (adds win class to cells) ----
       function checkWinnerLocal() {
-        const combos = [
-          [0, 1, 2],
-          [3, 4, 5],
-          [6, 7, 8],
-          [0, 3, 6],
-          [1, 4, 7],
-          [2, 5, 8],
-          [0, 4, 8],
-          [2, 4, 6],
-        ];
+        const combos = winCombos;
         const cells = document.querySelectorAll(".cell");
-        for (let [a, b, c] of combos) {
+        for (const [a, b, c] of combos) {
           if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-            [a, b, c].forEach((i) => cells[i]?.classList.add("win"));
+            [a, b, c].forEach((i) => {
+              const el = cells[i];
+              if (el) el.classList.add("win");
+            });
             gameOver = true;
             return board[a];
           }
@@ -211,56 +349,40 @@
         return null;
       }
 
-      // --- 🆕 Restart / New Game ---
-      newBtn.onclick = () => {
-        // Generate a new random game ID
-        const newId = Math.random().toString(36).slice(2, 7);
-        // Reset the URL to remove the old one and set the new one
-        location.hash = newId;
-        // Reset local state
+      // ---- Leave game (clear hash and detach) ----
+      function leaveGame() {
+        // remove our player entry if possible (best-effort)
+        if (gameId && symbol) {
+          try {
+            set(ref(db, `games/${gameId}/players/${symbol}`), null).catch(
+              () => {}
+            );
+          } catch (e) {}
+        }
+        // clear url hash and local state and detach listener
+        location.hash = "";
+        detachListener();
+        gameId = null;
         board = Array(9).fill("");
         current = "X";
-        gameOver = false;
         symbol = "X";
+        gameOver = false;
+        clearWinClasses();
         renderBoard();
-        statusEl.textContent =
-          "Created a new game. Share this link: " + location.href;
-        // Create new game node in Firebase
-        set(ref(db, "games/" + newId), {
-          board: Array(9).fill(""),
-          current: "X",
-          players: { X: uid },
-          status: "waiting",
-        });
-        // Stop listening to the old game node and start listening to the new one
-        dbRef = ref(db, "games/" + newId);
-        onValue(dbRef, handleGameUpdate);
-      };
-      //   newBtn.onclick = () => {
-      //     location.href = location.origin + location.pathname; // no hash
-      //     location.reload();
-      //   };
-
-      // --- 🧠 Shared update handler for both create/join ---
-      function handleGameUpdate(snap) {
-        const data = snap.val();
-        if (!data) return;
-        board = data.board;
-        current = data.current;
-        renderBoard();
-        checkWinnerLocal();
-        if (data.status === "waiting" && data.players.O) {
-          update(ref(db, "games/" + gameId), { status: "playing" });
-          statusEl.textContent = "Game started!";
-        } else if (data.status === "playing") {
-          statusEl.textContent =
-            current === symbol ? "Your turn" : "Opponent’s turn";
-        } else if (data.status === "finished") {
-          statusEl.textContent = data.message;
-        }
+        statusEl.textContent = "Left game. Click New Game to start.";
+        shareLink.href = "#";
+        shareLink.textContent = "";
       }
 
-      // --- Start ---
+      // ---- Button handlers ----
+      newBtn.addEventListener("click", async (e) => {
+        // If we are currently in a game and want to create a new one, create new node and attach
+        await createNewGameAndAttach();
+      });
+
+      leaveBtn.addEventListener("click", leaveGame);
+
+      // ---- initial render + try to create/join based on hash ----
       renderBoard();
       createOrJoinGame();
     </script>
