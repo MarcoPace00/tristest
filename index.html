@@ -211,11 +211,52 @@
         return null;
       }
 
+      // --- 🆕 Restart / New Game ---
       newBtn.onclick = () => {
-        location.href = location.origin + location.pathname;
-        location.reload();
+        // Generate a new random game ID
+        const newId = Math.random().toString(36).slice(2, 7);
+        // Reset the URL to remove the old one and set the new one
+        location.hash = newId;
+        // Reset local state
+        board = Array(9).fill("");
+        current = "X";
+        gameOver = false;
+        symbol = "X";
+        renderBoard();
+        statusEl.textContent =
+          "Created a new game. Share this link: " + location.href;
+        // Create new game node in Firebase
+        set(ref(db, "games/" + newId), {
+          board: Array(9).fill(""),
+          current: "X",
+          players: { X: uid },
+          status: "waiting",
+        });
+        // Stop listening to the old game node and start listening to the new one
+        dbRef = ref(db, "games/" + newId);
+        onValue(dbRef, handleGameUpdate);
       };
 
+      // --- 🧠 Shared update handler for both create/join ---
+      function handleGameUpdate(snap) {
+        const data = snap.val();
+        if (!data) return;
+        board = data.board;
+        current = data.current;
+        renderBoard();
+        checkWinnerLocal();
+        if (data.status === "waiting" && data.players.O) {
+          update(ref(db, "games/" + gameId), { status: "playing" });
+          statusEl.textContent = "Game started!";
+        } else if (data.status === "playing") {
+          statusEl.textContent =
+            current === symbol ? "Your turn" : "Opponent’s turn";
+        } else if (data.status === "finished") {
+          statusEl.textContent = data.message;
+        }
+      }
+
+      // --- Start ---
       renderBoard();
       createOrJoinGame();
     </script>
