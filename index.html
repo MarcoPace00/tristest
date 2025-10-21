@@ -212,29 +212,33 @@
       }
 
       // --- 🆕 Restart / New Game ---
+      //   newBtn.onclick = () => {
+      //     // Generate a new random game ID
+      //     const newId = Math.random().toString(36).slice(2, 7);
+      //     // Reset the URL to remove the old one and set the new one
+      //     location.hash = newId;
+      //     // Reset local state
+      //     board = Array(9).fill("");
+      //     current = "X";
+      //     gameOver = false;
+      //     symbol = "X";
+      //     renderBoard();
+      //     statusEl.textContent =
+      //       "Created a new game. Share this link: " + location.href;
+      //     // Create new game node in Firebase
+      //     set(ref(db, "games/" + newId), {
+      //       board: Array(9).fill(""),
+      //       current: "X",
+      //       players: { X: uid },
+      //       status: "waiting",
+      //     });
+      //     // Stop listening to the old game node and start listening to the new one
+      //     dbRef = ref(db, "games/" + newId);
+      //     onValue(dbRef, handleGameUpdate);
+      //   };
       newBtn.onclick = () => {
-        // Generate a new random game ID
-        const newId = Math.random().toString(36).slice(2, 7);
-        // Reset the URL to remove the old one and set the new one
-        location.hash = newId;
-        // Reset local state
-        board = Array(9).fill("");
-        current = "X";
-        gameOver = false;
-        symbol = "X";
-        renderBoard();
-        statusEl.textContent =
-          "Created a new game. Share this link: " + location.href;
-        // Create new game node in Firebase
-        set(ref(db, "games/" + newId), {
-          board: Array(9).fill(""),
-          current: "X",
-          players: { X: uid },
-          status: "waiting",
-        });
-        // Stop listening to the old game node and start listening to the new one
-        dbRef = ref(db, "games/" + newId);
-        onValue(dbRef, handleGameUpdate);
+        location.href = location.origin + location.pathname; // no hash
+        location.reload();
       };
 
       // --- 🧠 Shared update handler for both create/join ---
